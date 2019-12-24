@@ -175,12 +175,12 @@ resource "azurerm_virtual_machine" "controller" {
   provisioner "remote-exec" {
     inline = [
       <<EOT
-      mkdir -p /opt/anypoint/runtimefabric && cat > /opt/anypoint/runtimefabric/env <<EOF 
+      sudo mkdir -p /opt/anypoint/runtimefabric && sudo cat > /opt/anypoint/runtimefabric/env <<EOF 
       RTF_PRIVATE_IP='${azurerm_network_interface.rtf-nic-controller[0].ip_configuration[0].private_ip_address}'
       RTF_NODE_ROLE=controller_node 
       RTF_INSTALL_ROLE=leader 
-      RTF_ETCD_DEVICE=/dev/xvdc 
-      RTF_DOCKER_DEVICE=/dev/xvdb 
+      RTF_ETCD_DEVICE=/dev/disk/azure/scsi1/lun0
+      RTF_DOCKER_DEVICE=/dev/disk/azure/scsi1/lun1
       RTF_TOKEN='${var.cluster_token}' 
       RTF_NAME='runtime-fabric' 
       RTF_ACTIVATION_DATA='${var.activation_data}' 
@@ -264,11 +264,11 @@ resource "azurerm_virtual_machine" "worker" {
   provisioner "remote-exec" {
     inline = [
       <<EOT
-      mkdir -p /opt/anypoint/runtimefabric && cat > /opt/anypoint/runtimefabric/env <<EOF 
+      sudo mkdir -p /opt/anypoint/runtimefabric && sudo cat > /opt/anypoint/runtimefabric/env <<EOF 
       RTF_PRIVATE_IP='${azurerm_network_interface.rtf-nic-worker[count.index].ip_configuration[0].private_ip_address}'
       RTF_NODE_ROLE=worker_node 
       RTF_INSTALL_ROLE=joiner 
-      RTF_DOCKER_DEVICE=/dev/xvdb 
+      RTF_DOCKER_DEVICE=/dev/disk/azure/scsi1/lun1
       RTF_TOKEN='${var.cluster_token}' 
       RTF_INSTALLER_IP='${azurerm_network_interface.rtf-nic-controller[0].ip_configuration[0].private_ip_address}'
       EOF
