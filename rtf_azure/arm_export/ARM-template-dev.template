@@ -1,0 +1,1350 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "publicKey": {
+            "type": "string",
+            "metadata": {
+                "description": "Insert the contents of your public key. This will be inserted in each VM to allow you to authenticate via your private key when using SSH. It's a long string that typically starts with 'ssh-rsa ...'"
+            }
+        },
+        "anypointActivationData": {
+            "type": "string",
+            "metadata": {
+                "description": "Specify an activation data for your Runtime Fabric."
+            }
+        },
+        "sshUserName": {
+            "defaultValue": "rtf-user",
+            "type": "string",
+            "metadata": {
+                "description": "Define the username to use when logging into each VM (using SSH for example)."
+            }
+        },
+        "runtimeFabricToken": {
+            "defaultValue": "my-rtf-token",
+            "type": "string",
+            "metadata": {
+                "description": "Specify a unique token used by each VM to join the Runtime Fabric."
+            }
+        },
+        "controllerInstanceType": {
+            "allowedValues": [
+                "Standard_D2s_v3",
+                "Standard_D4s_v3",
+                "Standard_D8s_v3",
+                "Standard_D16s_v3"
+              ],
+            "defaultValue": "Standard_D2s_v3",
+            "type": "string",
+            "metadata": {
+                "description": "Select the virtual machine size to use for the Runtime Fabric controllers. (Minimum of 2 cores and 8 GiB memory.)"
+            }
+        },
+        "workerInstanceType": {
+            "allowedValues": [
+                "Standard_E2s_v3",
+                "Standard_E4s_v3",
+                "Standard_E8s_v3",
+                "Standard_E16s_v3",
+                "Standard_E32s_v3",
+                "Standard_E64s_v3"
+              ],
+            "defaultValue": "Standard_E2s_v3",
+            "type": "string",
+            "metadata": {
+                "description": "Select the virtual machine size to use for the Runtime Fabric workers. (Minimum of 2 cores and 15 GiB memory.)"
+            }
+        },
+        "virtualNetworkCIDR": {
+            "defaultValue": "172.31.0.0/16",
+            "type": "string",
+            "metadata": {
+                "description": "Specify the network address space to allocate when creating the virtual network, in CIDR notation."
+            }
+        },
+        "virtualNetworkSubnet": {
+            "defaultValue": "172.31.3.0/28",
+            "type": "string",
+            "metadata": {
+                "description": "Specify the subnet to create when assigning private IP addresses to the virtual network, in CIDR notation."
+            }
+        },
+        "installerIPAddress": {
+            "defaultValue": "172.31.3.4",
+            "type": "string",
+            "metadata": {
+                "description": "The private IP address to assign to the VM running the installation of Runtime Fabric. Ensure this address falls within the subnet specified."
+            }
+        },
+        "podNetworkCIDR": {
+            "defaultValue": "10.244.0.0/16",
+            "type": "string",
+            "metadata": {
+                "description": " CIDR range Kubernetes will be allocating node subnets and pod IPs from. Must be a minimum of /16."
+            }
+        },
+        "serviceCIDR": {
+            "defaultValue": "10.100.0.0/16",
+            "type": "string",
+            "metadata": {
+                "description": "CIDR range Kubernetes will be allocating service IPs from."
+            }
+        },
+        "availabilitySetUpdateDomains": {
+            "defaultValue": 2,
+            "type": "int",
+            "metadata": {
+                "description": "The number of update domains to specify for the availability sets. Note, the maximum value allowed is dependent on the region for deployment."
+            }
+        },
+        "availabilitySetFaultDomains": {
+            "defaultValue": 2,
+            "type": "int",
+            "metadata": {
+                "description": "The number of fault domains to specify for the availability sets. Note, the maximum value allowed is dependent on the region for deployment."
+            }
+        }
+    },
+    "variables": {
+        "etcd_device": "/dev/disk/azure/scsi1/lun0",
+        "docker_device": "/dev/disk/azure/scsi1/lun1",
+        "etcd_disk_size": "1024",
+        "docker_disk_size": "256",
+        "os_disk_size": "128",
+        "vm_rtf_1_name": "rtf-controller-1",
+        "vm_rtf_2_name": "rtf-worker-1",
+        "vm_rtf_3_name": "rtf-worker-2",
+        "nic_rtf_1_name": "nic-rtf-controller-1",
+        "nic_rtf_2_name": "nic-rtf-worker-1",
+        "nic_rtf_3_name": "nic-rtf-worker-2",
+        "public_ip_rtf_1_name": "ip-rtf-controller-1",
+        "public_ip_rtf_2_name": "ip-rtf-worker-1",
+        "public_ip_rtf_3_name": "ip-rtf-worker-2",
+        "aset_rtf_1_name": "aset-rtf-1",
+        "aset_rtf_2_name": "aset-rtf-2",
+        "nsg_rtf_name": "nsg-rtf",
+        "vnet_rtf_name": "vnet-rtf",
+        "disk_rtf_1_OS_name": "disk-rtf-controller-1-OS",
+        "disk_rtf_1_etcd_name": "disk-rtf-controller-1-etcd",
+        "disk_rtf_1_docker_name": "disk-rtf-controller-1-docker",
+        "disk_rtf_2_OS_name": "disk-rtf-worker-1-OS",
+        "disk_rtf_2_docker_name": "disk-rtf-worker-1-docker",
+        "disk_rtf_3_OS_name": "disk-rtf-worker-2-OS",
+        "disk_rtf_3_docker_name": "disk-rtf-worker-2-docker",
+        "subnets_default_name": "default",
+        "rtf_cluster_name": "rtf-dev-cluster",
+        "init_script": "<INIT_SCRIPT_PLACEHOLDER>"
+    },
+    "resources": [
+        {
+            "name": "[variables('disk_rtf_1_etcd_name')]",
+            "type": "Microsoft.Compute/disks",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "sku": {
+              "name": "Premium_LRS"
+            },
+            "properties": {
+              "osType": "Linux",
+              "creationData": {
+                "createOption": "Empty"
+              },
+              "diskSizeGB": "[variables('etcd_disk_size')]"
+            }
+          },
+          {
+            "name": "[variables('disk_rtf_1_docker_name')]",
+            "type": "Microsoft.Compute/disks",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "sku": {
+              "name": "Premium_LRS"
+            },
+            "properties": {
+              "osType": "Linux",
+              "creationData": {
+                "createOption": "Empty"
+              },
+              "diskSizeGB": "[variables('docker_disk_size')]"
+            }
+          },
+        {
+            "name": "[variables('disk_rtf_2_docker_name')]",
+            "type": "Microsoft.Compute/disks",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "sku": {
+              "name": "Premium_LRS"
+            },
+            "properties": {
+              "osType": "Linux",
+              "creationData": {
+                "createOption": "Empty"
+              },
+              "diskSizeGB": "[variables('docker_disk_size')]"
+            }
+        },
+        {
+            "name": "[variables('disk_rtf_3_docker_name')]",
+            "type": "Microsoft.Compute/disks",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "sku": {
+              "name": "Premium_LRS"
+            },
+            "properties": {
+              "osType": "Linux",
+              "creationData": {
+                "createOption": "Empty"
+              },
+              "diskSizeGB": "[variables('docker_disk_size')]"
+            }
+        },
+        {
+            "type": "Microsoft.Compute/availabilitySets",
+            "sku": {
+                "name": "Aligned"
+            },
+            "name": "[variables('aset_rtf_1_name')]",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "platformUpdateDomainCount": "[parameters('availabilitySetUpdateDomains')]",
+                "platformFaultDomainCount": "[parameters('availabilitySetFaultDomains')]",
+                "virtualMachines": [
+                    {
+                        "id": "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_1_name'))]"
+                    }
+                ]
+            },
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.Compute/availabilitySets",
+            "sku": {
+                "name": "Aligned"
+            },
+            "name": "[variables('aset_rtf_2_name')]",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "platformUpdateDomainCount": "[parameters('availabilitySetUpdateDomains')]",
+                "platformFaultDomainCount": "[parameters('availabilitySetFaultDomains')]",
+                "virtualMachines": [
+                    {
+                        "id": "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_2_name'))]"
+                    },
+                    {
+                        "id": "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_3_name'))]"
+                    }
+                ]
+            },
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[variables('vm_rtf_1_name')]",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "RTF_NODE_ROLE": "controller_node",
+                "RTF_INSTALL_ROLE": "leader",
+                "RTF_ETCD_DEVICE": "[variables('etcd_device')]",
+                "RTF_DOCKER_DEVICE": "[variables('docker_device')]",
+                "RTF_TOKEN": "[parameters('runtimeFabricToken')]",
+                "RTF_ACTIVATION_DATA": "[parameters('anypointActivationData')]",
+                "RTF_NAME": "[variables('rtf_cluster_name')]",
+                "POD_NETWORK_CIDR": "[parameters('podNetworkCIDR')]",
+                "SERVICE_CIDR": "[parameters('serviceCIDR')]"
+            },
+            "scale": null,
+            "properties": {
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('aset_rtf_1_name'))]"
+                },
+                "hardwareProfile": {
+                    "vmSize": "[parameters('controllerInstanceType')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "RedHat",
+                        "offer": "RHEL",
+                        "sku": "7-RAW",
+                        "version": "7.7.2019090418"
+                    },
+                    "osDisk": {
+                        "osType": "Linux",
+                        "name": "[variables('disk_rtf_1_OS_name')]",
+                        "diskSizeGB": "[variables('os_disk_size')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite"
+                    },
+                    "dataDisks": [
+                        {
+                            "lun": 0,
+                            "name": "[variables('disk_rtf_1_etcd_name')]",
+                            "createOption": "Attach",
+                            "caching": "None",
+                            "managedDisk": {
+                                "id": "[resourceId('Microsoft.Compute/disks', variables('disk_rtf_1_etcd_name'))]",
+                                "storageAccountType": "Premium_LRS"
+                            }
+                        },
+                        {
+                            "lun": 1,
+                            "name": "[variables('disk_rtf_1_docker_name')]",
+                            "createOption": "Attach",
+                            "caching": "None",
+                            "managedDisk": {
+                                "id": "[resourceId('Microsoft.Compute/disks', variables('disk_rtf_1_docker_name'))]",
+                                "storageAccountType": "Premium_LRS"
+                            }
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[variables('vm_rtf_1_name')]",
+                    "adminUsername": "[parameters('sshUserName')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', parameters('sshUserName'), '/.ssh/authorized_keys')]",
+                                    "keyData": "[parameters('publicKey')]"
+                                }
+                            ]
+                        }
+                    },
+                    "secrets": []
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nic_rtf_1_name'))]",
+                            "properties": {
+                                "primary": true
+                            }
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('nic_rtf_1_name'))]",
+                "[resourceId('Microsoft.Compute/availabilitySets', variables('aset_rtf_1_name'))]",
+                "[resourceId('Microsoft.Compute/disks', variables('disk_rtf_1_etcd_name'))]",
+                "[resourceId('Microsoft.Compute/disks', variables('disk_rtf_1_docker_name'))]"
+            ],
+            "resources": [
+                {
+                    "name": "init-script",
+                    "type": "extensions",
+                    "location": "[resourceGroup().location]",
+                    "apiVersion": "2017-03-30",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_1_name'))]"
+                    ],
+                    "tags": {
+                      "displayName": "setup-script"
+                    },
+                    "properties": {
+                      "publisher": "Microsoft.Azure.Extensions",
+                      "type": "CustomScript",
+                      "typeHandlerVersion": "2.0",
+                      "autoUpgradeMinorVersion": true,
+                      "settings": {
+                        "script": "[variables('init_script')]",
+                        "skipDos2Unix":true
+                      }
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[variables('vm_rtf_2_name')]",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "RTF_NODE_ROLE": "worker_node",
+                "RTF_INSTALL_ROLE": "joiner",
+                "RTF_INSTALLER_IP":"[parameters('installerIPAddress')]",
+                "RTF_DOCKER_DEVICE": "[variables('docker_device')]",
+                "RTF_TOKEN": "[parameters('runtimeFabricToken')]"
+            },
+            "scale": null,
+            "properties": {
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('aset_rtf_2_name'))]"
+                },
+                "hardwareProfile": {
+                    "vmSize": "[parameters('workerInstanceType')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "RedHat",
+                        "offer": "RHEL",
+                        "sku": "7-RAW",
+                        "version": "7.6.2018103108"
+                    },
+                    "osDisk": {
+                        "osType": "Linux",
+                        "name": "[variables('disk_rtf_2_OS_name')]",
+                        "diskSizeGB": "[variables('os_disk_size')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite"
+                    },
+                    "dataDisks": [
+                        {
+                            "lun": 1,
+                            "name": "[variables('disk_rtf_2_docker_name')]",
+                            "createOption": "Attach",
+                            "caching": "None",
+                            "managedDisk": {
+                                "id": "[resourceId('Microsoft.Compute/disks', variables('disk_rtf_2_docker_name'))]",
+                                "storageAccountType": "Premium_LRS"
+                            }
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[variables('vm_rtf_2_name')]",
+                    "adminUsername": "[parameters('sshUserName')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', parameters('sshUserName'), '/.ssh/authorized_keys')]",
+                                    "keyData": "[parameters('publicKey')]"
+                                }
+                            ]
+                        }
+                    },
+                    "secrets": []
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nic_rtf_2_name'))]",
+                            "properties": {
+                                "primary": true
+                            }
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_1_name'))]",
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('nic_rtf_2_name'))]",
+                "[resourceId('Microsoft.Compute/availabilitySets', variables('aset_rtf_2_name'))]",
+                "[resourceId('Microsoft.Compute/disks', variables('disk_rtf_2_docker_name'))]"
+            ],
+            "resources": [
+                {
+                    "name": "init-script",
+                    "type": "extensions",
+                    "location": "[resourceGroup().location]",
+                    "apiVersion": "2017-03-30",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_2_name'))]"
+                    ],
+                    "tags": {
+                      "displayName": "setup-script"
+                    },
+                    "properties": {
+                      "publisher": "Microsoft.Azure.Extensions",
+                      "type": "CustomScript",
+                      "typeHandlerVersion": "2.0",
+                      "autoUpgradeMinorVersion": true,
+                      "settings": {
+                        "script": "[variables('init_script')]",
+                        "skipDos2Unix":true
+                      }
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[variables('vm_rtf_3_name')]",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "RTF_NODE_ROLE": "worker_node",
+                "RTF_INSTALL_ROLE": "joiner",
+                "RTF_INSTALLER_IP":"[parameters('installerIPAddress')]",
+                "RTF_DOCKER_DEVICE": "[variables('docker_device')]",
+                "RTF_TOKEN": "[parameters('runtimeFabricToken')]"
+            },
+            "scale": null,
+            "properties": {
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets', variables('aset_rtf_2_name'))]"
+                },
+                "hardwareProfile": {
+                    "vmSize": "[parameters('workerInstanceType')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "RedHat",
+                        "offer": "RHEL",
+                        "sku": "7-RAW",
+                        "version": "7.6.2018103108"
+                    },
+                    "osDisk": {
+                        "osType": "Linux",
+                        "name": "[variables('disk_rtf_3_OS_name')]",
+                        "diskSizeGB": "[variables('os_disk_size')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite"
+                    },
+                    "dataDisks": [
+                        {
+                            "lun": 1,
+                            "name": "[variables('disk_rtf_3_docker_name')]",
+                            "createOption": "Attach",
+                            "caching": "None",
+                            "managedDisk": {
+                                "id": "[resourceId('Microsoft.Compute/disks', variables('disk_rtf_3_docker_name'))]",
+                                "storageAccountType": "Premium_LRS"
+                            }
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[variables('vm_rtf_3_name')]",
+                    "adminUsername": "[parameters('sshUserName')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[concat('/home/', parameters('sshUserName'), '/.ssh/authorized_keys')]",
+                                    "keyData": "[parameters('publicKey')]"
+                                }
+                            ]
+                        }
+                    },
+                    "secrets": []
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nic_rtf_3_name'))]",
+                            "properties": {
+                                "primary": true
+                            }
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_1_name'))]",
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('nic_rtf_3_name'))]",
+                "[resourceId('Microsoft.Compute/availabilitySets', variables('aset_rtf_2_name'))]",
+                "[resourceId('Microsoft.Compute/disks', variables('disk_rtf_2_docker_name'))]"
+            ],
+            "resources": [
+                {
+                    "name": "init-script",
+                    "type": "extensions",
+                    "location": "[resourceGroup().location]",
+                    "apiVersion": "2017-03-30",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_3_name'))]"
+                    ],
+                    "tags": {
+                      "displayName": "setup-script"
+                    },
+                    "properties": {
+                      "publisher": "Microsoft.Azure.Extensions",
+                      "type": "CustomScript",
+                      "typeHandlerVersion": "2.0",
+                      "autoUpgradeMinorVersion": true,
+                      "settings": {
+                        "script": "[variables('init_script')]",
+                        "skipDos2Unix":true
+                      }
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[variables('nic_rtf_1_name')]",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "resourceGuid": "900f89f2-1d76-4e75-87e4-aca537adb6d5",
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "etag": "W/\"f22f121e-2e5a-436b-baf4-270be2dba3f6\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "privateIPAddress": "[parameters('installerIPAddress')]",
+                            "privateIPAllocationMethod": "Static",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('public_ip_rtf_1_name'))]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet_rtf_name'), variables('subnets_default_name'))]"
+                            },
+                            "primary": true,
+                            "privateIPAddressVersion": "IPv4"
+                        }
+                    }
+                ],
+                "dnsSettings": {
+                    "dnsServers": [],
+                    "appliedDnsServers": []
+                },
+                "enableAcceleratedNetworking": false,
+                "enableIPForwarding": false,
+                "primary": true,
+                "virtualMachine": {
+                    "id": "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_1_name'))]"
+                },
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('public_ip_rtf_1_name'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet_rtf_name'), variables('subnets_default_name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[variables('nic_rtf_2_name')]",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "resourceGuid": "f2ce14b8-6921-4b81-849e-9851935d90d6",
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "etag": "W/\"c4dc90aa-3a4a-4c89-ad10-f7e4ab9b2eb3\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('public_ip_rtf_2_name'))]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet_rtf_name'), variables('subnets_default_name'))]"
+                            },
+                            "primary": true,
+                            "privateIPAddressVersion": "IPv4"
+                        }
+                    }
+                ],
+                "dnsSettings": {
+                    "dnsServers": [],
+                    "appliedDnsServers": []
+                },
+                "enableAcceleratedNetworking": false,
+                "enableIPForwarding": false,
+                "primary": true,
+                "virtualMachine": {
+                    "id": "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_2_name'))]"
+                },
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_1_name'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('public_ip_rtf_2_name'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet_rtf_name'), variables('subnets_default_name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[variables('nic_rtf_3_name')]",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "resourceGuid": "e9a447c4-b7da-4895-8fa0-42631d94139b",
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "etag": "W/\"019bcf20-7282-4afe-87dc-c355c6c12bcd\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('public_ip_rtf_3_name'))]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet_rtf_name'), variables('subnets_default_name'))]"
+                            },
+                            "primary": true,
+                            "privateIPAddressVersion": "IPv4"
+                        }
+                    }
+                ],
+                "dnsSettings": {
+                    "dnsServers": [],
+                    "appliedDnsServers": []
+                },
+                "enableAcceleratedNetworking": false,
+                "enableIPForwarding": false,
+                "primary": true,
+                "virtualMachine": {
+                    "id": "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_3_name'))]"
+                },
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('vm_rtf_1_name'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('public_ip_rtf_3_name'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet_rtf_name'), variables('subnets_default_name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "name": "[variables('nsg_rtf_name')]",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "resourceGuid": "04353050-a8b8-461a-acc7-b450354fe9be",
+                "securityRules": [
+                    {
+                        "name": "default-allow-ssh",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 1000,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "BandwidthChecker",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Bandwidth checker",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "4242",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 200,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "InstallerPorts",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Installer ports",
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 300,
+                            "direction": "Inbound",
+                            "sourcePortRange": "*",
+                            "destinationPortRanges": [
+                                "61008-61010",
+                                "61022-61024"
+                            ],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "DNS",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "DNS -- udp, tcp",
+                            "protocol": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "53",
+                            "sourceAddressPrefix": "Internet",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 101,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "P2P",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Serf peer-to-peer",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "7496",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 400,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "KubernetesAPIServer",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Kubernetes API server -- insecure and secure",
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 500,
+                            "direction": "Inbound",
+                            "sourcePortRange": "*",
+                            "destinationPortRanges": [
+                                "8080",
+                                "6443"
+                            ],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "EtcdPorts",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Peer-to-peer, client, legacy client, legacy peer-to-peer",
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 600,
+                            "direction": "Inbound",
+                            "sourcePortRange": "*",
+                            "destinationPortRanges": [
+                                "2380",
+                                "2379",
+                                "4001",
+                                "7001"
+                            ],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "DockerRegistry",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Docker registry",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "5000",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 700,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "OverlayNetwork",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Overlay network",
+                            "protocol": "Udp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "8472",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 800,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "GravityProfiling",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Gravity profiling port",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "6060",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 900,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "TeleportServices",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Teleport services (SSH server, proxy service, proxy tunnel, auth service)",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "3022-3025",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 1100,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "TeleportWeb",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Teleport web access",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "3080",
+                            "sourceAddressPrefix": "Internet",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Deny",
+                            "priority": 1200,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "InternalServices",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "internal services",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "30000-32767",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 1300,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "Kubelet",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Kubernetes kubelet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "10248-10255",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 1400,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "GravityServices",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Gravity services (ops service, pack service, health test, rpc agent)\n",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "3008-3012",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 1500,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "PlanetAgentRPC",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Planet agent RPC",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "7575",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 1600,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "SerfRPC",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Serf RPC",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "7373",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 1700,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "InboundHTTPS",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "HTTPS to Mule applications",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 1800,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "OpsCenter",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Ops Center UI",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "32009",
+                            "sourceAddressPrefix": "Internet",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 1900,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    }
+                ],
+                "defaultSecurityRules": [
+                    {
+                        "name": "AllowVnetInBound",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Allow inbound traffic from all VMs in VNET",
+                            "protocol": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "*",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 65000,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "AllowAzureLoadBalancerInBound",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Allow inbound traffic from azure load balancer",
+                            "protocol": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "*",
+                            "sourceAddressPrefix": "AzureLoadBalancer",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 65001,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "DenyAllInBound",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Deny all inbound traffic",
+                            "protocol": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "*",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Deny",
+                            "priority": 65500,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "AllowVnetOutBound",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Allow outbound traffic from all VMs to all VMs in VNET",
+                            "protocol": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "*",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "priority": 65000,
+                            "direction": "Outbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "AllowInternetOutBound",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Allow outbound traffic from all VMs to Internet",
+                            "protocol": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "*",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "Internet",
+                            "access": "Allow",
+                            "priority": 65001,
+                            "direction": "Outbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "DenyAllOutBound",
+                        "etag": "W/\"a10ad56c-b54a-4ca4-9b3b-96b0499bc682\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "description": "Deny all outbound traffic",
+                            "protocol": "*",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "*",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Deny",
+                            "priority": 65500,
+                            "direction": "Outbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    }
+                ]
+            },
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "sku": {
+                "name": "Standard"
+            },
+            "name": "[variables('public_ip_rtf_1_name')]",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "resourceGuid": "86c35d3e-ce82-4e89-b78e-bf5fd6a53fc2",
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static",
+                "idleTimeoutInMinutes": 4
+            },
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "sku": {
+                "name": "Standard"
+            },
+            "name": "[variables('public_ip_rtf_2_name')]",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "resourceGuid": "1e8cad51-e2b0-4e83-ae0a-0df40c1cced6",
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static",
+                "idleTimeoutInMinutes": 4
+            },
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "sku": {
+                "name": "Standard"
+            },
+            "name": "[variables('public_ip_rtf_3_name')]",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "resourceGuid": "791ac467-211f-414f-b068-794b22b41734",
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static",
+                "idleTimeoutInMinutes": 4
+            },
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "[variables('vnet_rtf_name')]",
+            "apiVersion": "2017-10-01",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "resourceGuid": "461a5eb7-4b22-4df1-8e46-1f95d8130710",
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[parameters('virtualNetworkCIDR')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "default",
+                        "etag": "W/\"ee2cee7b-1c5c-481f-abae-4a2ef7fca5d1\"",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "addressPrefix": "[parameters('virtualNetworkSubnet')]",
+							"networkSecurityGroup": {
+                            "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"
+                          }
+                        }
+                    }
+                ],
+                "virtualNetworkPeerings": [],
+                "enableDdosProtection": false,
+                "enableVmProtection": false
+            },
+            "dependsOn": ["[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"]
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "name": "[concat(variables('vnet_rtf_name'), '/', variables('subnets_default_name'))]",
+            "apiVersion": "2017-10-01",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "addressPrefix": "[parameters('virtualNetworkSubnet')]",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"
+                },
+                "serviceEndpoints": []
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnet_rtf_name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg_rtf_name'))]"
+            ]
+        }
+    ]
+}

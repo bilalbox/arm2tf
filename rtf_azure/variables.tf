@@ -13,24 +13,32 @@ variable "tenant_id" {
   default = "" 
 }
 
-variable "kubeadm_token" {
+variable "activation_data" {
   default = ""
+}
+
+variable "mule_license" {
+  default = ""
+}
+
+variable "cluster_token" {
+  default = "my-cluster-token"
 }
 
 variable "resource_group" {
   description = "The name of your Azure Resource Group."
-  default     = "cka-lab-rg"
+  default     = "rtf-rg"
 }
 
 variable "prefix" {
   description = "This prefix will be included in the name of some resources."
-  default     = "cka-lab"
+  default     = "rtf"
 }
 
 variable "cluster_size" {
   description = "Virtual machine hostname. Used for local hostname, DNS, and storage-related names."
   default     = {
-    masters = 1,
+    controllers = 1,
     workers = 2
   }
 }
@@ -45,19 +53,29 @@ variable "virtual_network_name" {
   default     = "vnet"
 }
 
-variable "address_space" {
-  description = "The address space that is used by the virtual network. You can supply more than one address space. Changing this forces a new resource to be created."
-  default     = "10.0.0.0/16"
+variable "virtualNetworkCIDR" {
+  description = "Specifies the network address space to allocate when creating the virtual network, in CIDR notation."
+  default     = "172.31.0.0/16"
 }
 
-variable "subnet_prefix" {
-  description = "The address prefix to use for the subnet."
-  default     = "10.0.10.0/24"
+variable "virtualNetworkSubnet" {
+  description = "Specifies the subnet to create when assigning private IP addresses to the virtual network, in CIDR notation."
+  default     = "172.31.3.0/28"
+}
+
+variable "serviceCIDR" {
+  description = "CIDR range Kubernetes will be allocating service IPs from."
+  default     = "10.100.0.0/16"
+}
+
+variable "podCIDR" {
+  description = "CIDR range Kubernetes will be allocating pod IPs from."
+  default     = "10.244.0.0/16"
 }
 
 variable "storage_account_tier" {
   description = "Defines the storage tier. Valid options are Standard and Premium."
-  default     = "Standard"
+  default     = "Premium"
 }
 
 variable "storage_replication_type" {
@@ -65,34 +83,39 @@ variable "storage_replication_type" {
   default     = "LRS"
 }
 
-variable "vm_size" {
+variable "controller_vm_size" {
   description = "Specifies the size of the virtual machine."
-  default     = "Standard_B2s"
+  default     = "Standard_D2s_v3"
+}
+
+variable "worker_vm_size" {
+  description = "Specifies the size of the virtual machine."
+  default     = "Standard_E2s_v3"
 }
 
 variable "image_publisher" {
   description = "Name of the publisher of the image (az vm image list)"
-  default     = "Canonical"
+  default     = "RedHat"
 }
 
 variable "image_offer" {
   description = "Name of the offer (az vm image list)"
-  default     = "UbuntuServer"
+  default     = "RHEL"
 }
 
 variable "image_sku" {
   description = "Image SKU to apply (az vm image list)"
-  default     = "18.04-LTS"
+  default     = "7-RAW"
 }
 
 variable "image_version" {
   description = "Version of the image to apply (az vm image list)"
-  default     = "latest"
+  default     = "7.7.2019090418"
 }
 
 variable "admin_username" {
   description = "Administrator user name"
-  default     = "cka-admin"
+  default     = "rtf-user"
 }
 
 variable "ssh_key" {
