@@ -1,6 +1,4 @@
-# arm2tf
-ARM to Terraform template conversions. Tested with **terraform v0.12**
-
+# rtf_install
 For details on Runtime Fabric installation being automated with this template, please see: https://docs.mulesoft.com/runtime-fabric/latest/install-manual
 
 Make sure to set the following ENV VARs to authenticate with Azure:
