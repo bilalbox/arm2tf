@@ -27,6 +27,11 @@ override.tf.json
 
 # Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
 # example: *tfplan*
-creds.txt
+
+# Ignore OSX filesystem artifacts
 .DS_Store
+
+# Ignore files containing sensitive data
 *.lic
+creds*
+*.tmp

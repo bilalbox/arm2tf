@@ -200,12 +200,12 @@ resource "azurerm_virtual_machine" "controller" {
       "sudo mkdir -p /opt/anypoint/runtimefabric",
       "sudo cp -r /home/${var.admin_username}/env /home/${var.admin_username}/init.sh /opt/anypoint/runtimefabric/",
       "sudo chmod 754 /opt/anypoint/runtimefabric/env /opt/anypoint/runtimefabric/init.sh",
-      "sudo /opt/anypoint/runtimefabric/init.sh",
+      "sudo /opt/anypoint/runtimefabric/init.sh"
     ]
 
     connection {
-      type     = "ssh"
-      user     = var.admin_username
+      type      = "ssh"
+      user        = var.admin_username
       private_key = file("~/.ssh/id_rsa")
       host     = azurerm_public_ip.rtf-pip-controller[count.index].fqdn
     }
@@ -294,7 +294,7 @@ resource "azurerm_virtual_machine" "worker" {
       "sudo mkdir -p /opt/anypoint/runtimefabric",
       "sudo cp -r /home/${var.admin_username}/env /home/${var.admin_username}/init.sh /opt/anypoint/runtimefabric/",
       "sudo chmod 754 /opt/anypoint/runtimefabric/env /opt/anypoint/runtimefabric/init.sh",
-      "sudo /opt/anypoint/runtimefabric/init.sh",
+      "sudo /opt/anypoint/runtimefabric/init.sh"
     ]
 
     connection {

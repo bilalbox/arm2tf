@@ -69,7 +69,7 @@ eval "sed $SED_OPTS \"s/# ADDITIONAL_ENV_VARS_PLACEHOLDER_DO_NOT_REMOVE/\$ADDITI
 
 INIT_BASE64=$(cat init.sh.tmp | gzip -9 | base64 $Base64_OPTS)
 INIT_BASE64=${INIT_BASE64//\//\\\/}
-rm init.sh.tmp
+# rm init.sh.tmp
 
 cp ARM-template-dev.template ARM-template-dev.json
 eval "sed $SED_OPTS \"s/<INIT_SCRIPT_PLACEHOLDER>/\$INIT_BASE64/g\" ARM-template-dev.json"
