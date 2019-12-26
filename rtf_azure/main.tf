@@ -172,10 +172,8 @@ resource "azurerm_virtual_machine" "controller" {
     }
   }
 
-  provisioner "remote-exec" {
-    inline = [
-      <<EOT
-      sudo mkdir -p /opt/anypoint/runtimefabric && sudo cat > /opt/anypoint/runtimefabric/env <<EOF 
+  provisioner "file" {
+    content      = <<-EOT
       RTF_PRIVATE_IP='${azurerm_network_interface.rtf-nic-controller[0].ip_configuration[0].private_ip_address}'
       RTF_NODE_ROLE=controller_node 
       RTF_INSTALL_ROLE=leader 
@@ -186,13 +184,24 @@ resource "azurerm_virtual_machine" "controller" {
       RTF_ACTIVATION_DATA='${var.activation_data}' 
       RTF_MULE_LICENSE='${var.mule_license}' 
       POD_NETWORK_CIDR='${var.podCIDR}' 
-      SERVICE_CIDR='${var.serviceCIDR}' 
-      EOF
-      EOT
-      ,
-      "chmod +x /home/${var.admin_username}/init.sh",
-      "sudo /home/${var.admin_username}/init.sh",
-  ]
+      SERVICE_CIDR='${var.serviceCIDR}'
+    EOT
+    destination = "/home/${var.admin_username}/env"
+    connection {
+      type     = "ssh"
+      user     = var.admin_username
+      private_key = file("~/.ssh/id_rsa")
+      host     = azurerm_public_ip.rtf-pip-controller[count.index].fqdn
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [ 
+      "sudo mkdir -p /opt/anypoint/runtimefabric",
+      "sudo cp -r /home/${var.admin_username}/env /home/${var.admin_username}/init.sh /opt/anypoint/runtimefabric/",
+      "sudo chmod 754 /opt/anypoint/runtimefabric/env /opt/anypoint/runtimefabric/init.sh",
+      "sudo /opt/anypoint/runtimefabric/init.sh",
+    ]
 
     connection {
       type     = "ssh"
@@ -261,22 +270,32 @@ resource "azurerm_virtual_machine" "worker" {
     }
   }
 
-  provisioner "remote-exec" {
-    inline = [
-      <<EOT
-      sudo mkdir -p /opt/anypoint/runtimefabric && sudo cat > /opt/anypoint/runtimefabric/env <<EOF 
+    provisioner "file" {
+    content      = <<-EOT
       RTF_PRIVATE_IP='${azurerm_network_interface.rtf-nic-worker[count.index].ip_configuration[0].private_ip_address}'
       RTF_NODE_ROLE=worker_node 
       RTF_INSTALL_ROLE=joiner 
       RTF_DOCKER_DEVICE=/dev/disk/azure/scsi1/lun1
       RTF_TOKEN='${var.cluster_token}' 
       RTF_INSTALLER_IP='${azurerm_network_interface.rtf-nic-controller[0].ip_configuration[0].private_ip_address}'
-      EOF
-      EOT
-      ,
-      "chmod +x /home/${var.admin_username}/init.sh",
-      "sudo /home/${var.admin_username}/init.sh"
-  ]
+    EOT
+
+    destination = "/home/${var.admin_username}/env"
+    connection {
+      type     = "ssh"
+      user     = var.admin_username
+      private_key = file("~/.ssh/id_rsa")
+      host     = azurerm_public_ip.rtf-pip-worker[count.index].fqdn
+    }
+  }
+
+  provisioner "remote-exec" {
+    inline = [ 
+      "sudo mkdir -p /opt/anypoint/runtimefabric",
+      "sudo cp -r /home/${var.admin_username}/env /home/${var.admin_username}/init.sh /opt/anypoint/runtimefabric/",
+      "sudo chmod 754 /opt/anypoint/runtimefabric/env /opt/anypoint/runtimefabric/init.sh",
+      "sudo /opt/anypoint/runtimefabric/init.sh",
+    ]
 
     connection {
       type     = "ssh"
