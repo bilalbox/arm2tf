@@ -53,6 +53,30 @@ resource "azurerm_network_security_group" "cka-lab-sg" {
     source_address_prefix      = var.source_network
     destination_address_prefix = "*"
   }
+
+  security_rule {
+    name                       = "HTTPS"
+    priority                   = 102
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = var.source_network
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "K8SAPI"
+    priority                   = 103
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "6443"
+    source_address_prefix      = var.source_network
+    destination_address_prefix = "*"
+  }
 }
 
 resource "azurerm_network_interface" "cka-lab-nic-master" {

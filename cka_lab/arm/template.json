@@ -3,23 +3,19 @@
     "contentVersion": "1.0.0.0",
     "parameters": {
         "controller_cluster_size": {
-            "defaultValue": 3,
+            "defaultValue": 1,
             "type": "int"
         },
         "worker_cluster_size": {
-            "defaultValue": 3,
+            "defaultValue": 2,
             "type": "int"
         },
-        "osName": {
+        "ubuntuRelease": {
             "allowedValues": [
                 "16.04-LTS",
                 "18.04-LTS"
             ],
             "defaultValue": "16.04-LTS",
-            "type": "string"
-        },
-        "location": {
-            "defaultValue": "eastasia",
             "type": "string"
         },
         "controllerInstanceType": {
@@ -44,19 +40,11 @@
             "defaultValue": "Standard_B2s",
             "type": "string"
         },
-        "vmss_cka_lab_controller_name": {
-            "defaultValue": "vmss_cka_lab_controllers",
+        "aset_cka_lab": {
+            "defaultValue": "aset_cka_lab_controllers",
             "type": "string"
         },
-        "vmss_cka_lab_worker_name": {
-            "defaultValue": "vmss_cka_lab_workers",
-            "type": "string"
-        },
-        "vmssFaultDomains": {
-            "defaultValue": 2,
-            "type": "int"
-        },
-        "namingPrefix":{
+        "namingPrefix": {
             "defaultValue": "cka-lab",
             "type": "string"
         },
@@ -71,13 +59,12 @@
             "type": "string"
         }
     },
-    "variables": {},
     "resources": [
         {
             "type": "Microsoft.Network/networkSecurityGroups",
             "apiVersion": "2019-09-01",
             "name": "[parameters('nsg_main_sg_name')]",
-            "location": "[parameters('location')]",
+            "location": "[resourcegroup().location]",
             "properties": {
                 "securityRules": [
                     {
@@ -155,7 +142,7 @@
             "type": "Microsoft.Network/virtualNetworks",
             "apiVersion": "2019-09-01",
             "name": "[parameters('namingPrefix')]",
-            "location": "[parameters('location')]",
+            "location": "[resourcegroup().location]",
             "properties": {
                 "addressSpace": {
                     "addressPrefixes": [
@@ -190,7 +177,7 @@
                 "count": "[parameters('controller_cluster_size')]"
             },
             "name": "[concat(parameters('namingPrefix'), '-controllerPip-', copyIndex())]",
-            "location": "[parameters('location')]",
+            "location": "[resourcegroup().location]",
             "sku": {
                 "name": "Basic"
             },
@@ -208,7 +195,7 @@
                 "count": "[parameters('worker_cluster_size')]"
             },
             "name": "[concat(parameters('namingPrefix'), '-workerPip-', copyIndex())]",
-            "location": "[parameters('location')]",
+            "location": "[resourcegroup().location]",
             "sku": {
                 "name": "Basic"
             },
@@ -241,7 +228,7 @@
                 "name": "copyLoop_controllerNics"
             },
             "name": "[concat(parameters('namingPrefix'), '-controllerNic-', copyIndex())]",
-            "location": "[parameters('location')]",
+            "location": "[resourcegroup().location]",
             "dependsOn": [
                 "[resourceId('Microsoft.Network/publicIPAddresses', concat(parameters('namingPrefix'), '-controllerPip-', copyIndex()))]",
                 "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('namingPrefix'), 'cka-lab-subnet')]",
@@ -282,7 +269,7 @@
                 "name": "copyLoop_workerNics"
             },
             "name": "[concat(parameters('namingPrefix'), '-workerNic-', copyIndex())]",
-            "location": "[parameters('location')]",
+            "location": "[resourcegroup().location]",
             "dependsOn": [
                 "[resourceId('Microsoft.Network/publicIPAddresses', concat(parameters('namingPrefix'), '-workerPip-', copyIndex()))]",
                 "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('namingPrefix'), 'cka-lab-subnet')]"
@@ -315,47 +302,32 @@
             }
         },
         {
-            "name": "[parameters('vmss_cka_lab_controller_name')]",
-            "type": "Microsoft.Compute/virtualMachineScaleSets",
-            "apiVersion": "2019-07-01",
-            "location": "[parameters('location')]",
+            "type": "Microsoft.Compute/availabilitySets",
+            "name": "[parameters('aset_cka_lab')]",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
             "properties": {
-                "singlePlacementGroup": "true",
-                "platformFaultDomainCount": "[parameters('vmssFaultDomains')]"
-            },
-            "dependsOn": [
-                "[concat('Microsoft.Network/virtualNetworks/', parameters('namingPrefix'))]"
-            ]
-        },
-        {
-            "name": "[parameters('vmss_cka_lab_worker_name')]",
-            "type": "Microsoft.Compute/virtualMachineScaleSets",
-            "apiVersion": "2019-07-01",
-            "location": "[parameters('location')]",
-            "properties": {
-                "singlePlacementGroup": "true",
-                "platformFaultDomainCount": "[parameters('vmssFaultDomains')]"
-            },
-            "dependsOn": [
-                "[concat('Microsoft.Network/virtualNetworks/', parameters('namingPrefix'))]"
-            ]
+                "platformUpdateDomainCount": 2,
+                "platformFaultDomainCount": 2,
+                "managed": true
+            }
         },
        {
             "type": "Microsoft.Compute/virtualMachines",
             "apiVersion": "2019-03-01",
             "name": "[concat(parameters('namingPrefix'),'-controller-',copyIndex())]",
-            "location": "eastasia",
+            "location": "[resourceGroup().location]",
             "dependsOn": [
                 "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('namingPrefix'), '-workerNic-', copyIndex()))]",
-                "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('vmss_cka_lab_controller_name'))]"
+                "[resourceId('Microsoft.Compute/availabilitySets', parameters('aset_cka_lab'))]"
             ],
             "copy": {
                 "name": "copyLoopControllerVMs",
                 "count": "[parameters('controller_cluster_size')]"
             },  
             "properties": {
-                "virtualMachineScaleSet": {
-                    "id": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('vmss_cka_lab_controller_name'))]"
+                "availabilitySet": {
+                    "id": "[resourceId('Microsoft.Compute/availabilitySets', parameters('aset_cka_lab'))]"
                 },
                 "hardwareProfile": {
                     "vmSize": "[parameters('controllerInstanceType')]"
@@ -364,7 +336,7 @@
                     "imageReference": {
                         "publisher": "Canonical",
                         "offer": "UbuntuServer",
-                        "sku": "[parameters('osName')]",
+                        "sku": "[parameters('ubuntuRelease')]",
                         "version": "latest"
                     },
                     "osDisk": {
@@ -408,19 +380,15 @@
             "type": "Microsoft.Compute/virtualMachines",
             "apiVersion": "2019-03-01",
             "name": "[concat(parameters('namingPrefix'),'-worker-',copyIndex())]",
-            "location": "eastasia",
+            "location": "[resourceGroup().location]",
             "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('namingPrefix'), '-workerNic-', copyIndex()))]",
-                "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('vmss_cka_lab_worker_name'))]"
+                "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('namingPrefix'), '-workerNic-', copyIndex()))]"
             ],
             "copy": {
                 "name": "copyLoopWorkerVMs",
                 "count": "[parameters('worker_cluster_size')]"
             },  
             "properties": {
-                "virtualMachineScaleSet": {
-                    "id": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('vmss_cka_lab_worker_name'))]"
-                },
                 "hardwareProfile": {
                     "vmSize": "[parameters('workerInstanceType')]"
                 },
@@ -428,7 +396,7 @@
                     "imageReference": {
                         "publisher": "Canonical",
                         "offer": "UbuntuServer",
-                        "sku": "[parameters('osName')]",
+                        "sku": "[parameters('ubuntuRelease')]",
                         "version": "latest"
                     },
                     "osDisk": {
