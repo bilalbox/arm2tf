@@ -1,50 +1,74 @@
 {
-    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
-        "virtualNetworks_vnet_name": {
-            "defaultValue": "vnet",
-            "type": "String"
+        "controller_cluster_size": {
+            "defaultValue": 3,
+            "type": "int"
         },
-        "virtualMachines_cka_lab_master_0_name": {
-            "defaultValue": "cka-lab-master-0",
-            "type": "String"
+        "worker_cluster_size": {
+            "defaultValue": 3,
+            "type": "int"
         },
-        "virtualMachines_cka_lab_worker_0_name": {
-            "defaultValue": "cka-lab-worker-0",
-            "type": "String"
+        "osName": {
+            "allowedValues": [
+                "16.04-LTS",
+                "18.04-LTS"
+            ],
+            "defaultValue": "16.04-LTS",
+            "type": "string"
         },
-        "virtualMachines_cka_lab_worker_1_name": {
-            "defaultValue": "cka-lab-worker-1",
-            "type": "String"
+        "location": {
+            "defaultValue": "eastasia",
+            "type": "string"
         },
-        "networkSecurityGroups_cka_lab_sg_name": {
+        "controllerInstanceType": {
+            "allowedValues": [
+                "Standard_B1s",
+                "Standard_B1ms",
+                "Standard_B2s",
+                "Standard_B2ms",
+                "Standard_B4ms"
+              ],
+            "defaultValue": "Standard_B2s",
+            "type": "string"
+        },
+        "workerInstanceType": {
+            "allowedValues": [
+                "Standard_B1s",
+                "Standard_B1ms",
+                "Standard_B2s",
+                "Standard_B2ms",
+                "Standard_B4ms"
+              ],
+            "defaultValue": "Standard_B2s",
+            "type": "string"
+        },
+        "vmss_cka_lab_controller_name": {
+            "defaultValue": "vmss_cka_lab_controllers",
+            "type": "string"
+        },
+        "vmss_cka_lab_worker_name": {
+            "defaultValue": "vmss_cka_lab_workers",
+            "type": "string"
+        },
+        "vmssFaultDomains": {
+            "defaultValue": 2,
+            "type": "int"
+        },
+        "namingPrefix":{
+            "defaultValue": "cka-lab",
+            "type": "string"
+        },
+        "nsg_main_sg_name": {
             "defaultValue": "cka-lab-sg",
-            "type": "String"
+            "type": "string"
         },
-        "networkInterfaces_cka_lab_nic_master_0_name": {
-            "defaultValue": "cka-lab-nic-master-0",
-            "type": "String"
+        "adminUsername": {
+            "type": "string"
         },
-        "networkInterfaces_cka_lab_nic_worker_0_name": {
-            "defaultValue": "cka-lab-nic-worker-0",
-            "type": "String"
-        },
-        "networkInterfaces_cka_lab_nic_worker_1_name": {
-            "defaultValue": "cka-lab-nic-worker-1",
-            "type": "String"
-        },
-        "publicIPAddresses_cka_lab_master_pip_0_name": {
-            "defaultValue": "cka-lab-master-pip-0",
-            "type": "String"
-        },
-        "publicIPAddresses_cka_lab_worker_pip_0_name": {
-            "defaultValue": "cka-lab-worker-pip-0",
-            "type": "String"
-        },
-        "publicIPAddresses_cka_lab_worker_pip_1_name": {
-            "defaultValue": "cka-lab-worker-pip-1",
-            "type": "String"
+        "adminPublicKey": {
+            "type": "string"
         }
     },
     "variables": {},
@@ -52,8 +76,8 @@
         {
             "type": "Microsoft.Network/networkSecurityGroups",
             "apiVersion": "2019-09-01",
-            "name": "[parameters('networkSecurityGroups_cka_lab_sg_name')]",
-            "location": "eastasia",
+            "name": "[parameters('nsg_main_sg_name')]",
+            "location": "[parameters('location')]",
             "properties": {
                 "securityRules": [
                     {
@@ -89,75 +113,49 @@
                             "sourceAddressPrefixes": [],
                             "destinationAddressPrefixes": []
                         }
+                    },
+                    {
+                        "name": "HTTPS",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 102,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "K8SAPI",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "6443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 103,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
                     }
                 ]
             }
         },
         {
-            "type": "Microsoft.Network/publicIPAddresses",
-            "apiVersion": "2019-09-01",
-            "name": "[parameters('publicIPAddresses_cka_lab_master_pip_0_name')]",
-            "location": "eastasia",
-            "sku": {
-                "name": "Basic"
-            },
-            "properties": {
-                "ipAddress": "168.63.203.40",
-                "publicIPAddressVersion": "IPv4",
-                "publicIPAllocationMethod": "Dynamic",
-                "idleTimeoutInMinutes": 4,
-                "dnsSettings": {
-                    "domainNameLabel": "cka-lab-master-0",
-                    "fqdn": "cka-lab-master-0.eastasia.cloudapp.azure.com"
-                },
-                "ipTags": []
-            }
-        },
-        {
-            "type": "Microsoft.Network/publicIPAddresses",
-            "apiVersion": "2019-09-01",
-            "name": "[parameters('publicIPAddresses_cka_lab_worker_pip_0_name')]",
-            "location": "eastasia",
-            "sku": {
-                "name": "Basic"
-            },
-            "properties": {
-                "ipAddress": "168.63.202.212",
-                "publicIPAddressVersion": "IPv4",
-                "publicIPAllocationMethod": "Dynamic",
-                "idleTimeoutInMinutes": 4,
-                "dnsSettings": {
-                    "domainNameLabel": "cka-lab-worker-0",
-                    "fqdn": "cka-lab-worker-0.eastasia.cloudapp.azure.com"
-                },
-                "ipTags": []
-            }
-        },
-        {
-            "type": "Microsoft.Network/publicIPAddresses",
-            "apiVersion": "2019-09-01",
-            "name": "[parameters('publicIPAddresses_cka_lab_worker_pip_1_name')]",
-            "location": "eastasia",
-            "sku": {
-                "name": "Basic"
-            },
-            "properties": {
-                "ipAddress": "168.63.203.65",
-                "publicIPAddressVersion": "IPv4",
-                "publicIPAllocationMethod": "Dynamic",
-                "idleTimeoutInMinutes": 4,
-                "dnsSettings": {
-                    "domainNameLabel": "cka-lab-worker-1",
-                    "fqdn": "cka-lab-worker-1.eastasia.cloudapp.azure.com"
-                },
-                "ipTags": []
-            }
-        },
-        {
             "type": "Microsoft.Network/virtualNetworks",
             "apiVersion": "2019-09-01",
-            "name": "[parameters('virtualNetworks_vnet_name')]",
-            "location": "eastasia",
+            "name": "[parameters('namingPrefix')]",
+            "location": "[parameters('location')]",
             "properties": {
                 "addressSpace": {
                     "addressPrefixes": [
@@ -185,244 +183,47 @@
             }
         },
         {
-            "type": "Microsoft.Compute/virtualMachines",
-            "apiVersion": "2019-03-01",
-            "name": "[parameters('virtualMachines_cka_lab_master_0_name')]",
-            "location": "eastasia",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_cka_lab_nic_master_0_name'))]"
-            ],
-            "properties": {
-                "hardwareProfile": {
-                    "vmSize": "Standard_B2s"
-                },
-                "storageProfile": {
-                    "imageReference": {
-                        "publisher": "Canonical",
-                        "offer": "UbuntuServer",
-                        "sku": "18.04-LTS",
-                        "version": "latest"
-                    },
-                    "osDisk": {
-                        "osType": "Linux",
-                        "name": "[concat(parameters('virtualMachines_cka_lab_master_0_name'), '-osdisk')]",
-                        "createOption": "FromImage",
-                        "caching": "ReadWrite",
-                        "writeAcceleratorEnabled": false,
-                        "managedDisk": {
-                            "storageAccountType": "StandardSSD_LRS",
-                            "id": "[resourceId('Microsoft.Compute/disks', concat(parameters('virtualMachines_cka_lab_master_0_name'), '-osdisk'))]"
-                        },
-                        "diskSizeGB": 30
-                    },
-                    "dataDisks": []
-                },
-                "osProfile": {
-                    "computerName": "[parameters('virtualMachines_cka_lab_master_0_name')]",
-                    "adminUsername": "cka-admin",
-                    "linuxConfiguration": {
-                        "disablePasswordAuthentication": true,
-                        "ssh": {
-                            "publicKeys": [
-                                {
-                                    "path": "/home/cka-admin/.ssh/authorized_keys",
-                                    "keyData": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDParMZyG06jBVSbNp45+URur2RNznOEZBANWWJ2nH4aBhEFxIqRRrDjiFTYucZFP0oJJTbyceIJJyNq7mA3KH2sKcq2WWiq2Qg6fFTclHRs6oOqJ6+kQHSRGmokgxLDCI+YpkIiXYJOxt1zhTnti3TtRhbyu/vBFjsBqhsaHyvLhx1NbD9YjXbeezBVOFCae87dftTt/SpezfmSassM+xfm3KZrI0p8ciJwIeemYYfrh1Tv/da1AAWYrv/7f5/Jrn78Or9XIoNA06Ncd6+m7uLW5KtNAT9VKTwi5LpDey7o5/p2p9nIZqfI6Y4cWCU8KhCvsai4071xx6VSsI3fJlr"
-                                }
-                            ]
-                        },
-                        "provisionVMAgent": true
-                    },
-                    "secrets": [],
-                    "allowExtensionOperations": true
-                },
-                "networkProfile": {
-                    "networkInterfaces": [
-                        {
-                            "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_cka_lab_nic_master_0_name'))]",
-                            "properties": {
-                                "primary": false
-                            }
-                        }
-                    ]
-                }
-            }
-        },
-        {
-            "type": "Microsoft.Compute/virtualMachines",
-            "apiVersion": "2019-03-01",
-            "name": "[parameters('virtualMachines_cka_lab_worker_0_name')]",
-            "location": "eastasia",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_cka_lab_nic_worker_0_name'))]"
-            ],
-            "properties": {
-                "hardwareProfile": {
-                    "vmSize": "Standard_B2s"
-                },
-                "storageProfile": {
-                    "imageReference": {
-                        "publisher": "Canonical",
-                        "offer": "UbuntuServer",
-                        "sku": "18.04-LTS",
-                        "version": "latest"
-                    },
-                    "osDisk": {
-                        "osType": "Linux",
-                        "name": "[concat(parameters('virtualMachines_cka_lab_worker_0_name'), '-osdisk')]",
-                        "createOption": "FromImage",
-                        "caching": "ReadWrite",
-                        "writeAcceleratorEnabled": false,
-                        "managedDisk": {
-                            "storageAccountType": "StandardSSD_LRS",
-                            "id": "[resourceId('Microsoft.Compute/disks', concat(parameters('virtualMachines_cka_lab_worker_0_name'), '-osdisk'))]"
-                        },
-                        "diskSizeGB": 30
-                    },
-                    "dataDisks": []
-                },
-                "osProfile": {
-                    "computerName": "[parameters('virtualMachines_cka_lab_worker_0_name')]",
-                    "adminUsername": "cka-admin",
-                    "linuxConfiguration": {
-                        "disablePasswordAuthentication": true,
-                        "ssh": {
-                            "publicKeys": [
-                                {
-                                    "path": "/home/cka-admin/.ssh/authorized_keys",
-                                    "keyData": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDParMZyG06jBVSbNp45+URur2RNznOEZBANWWJ2nH4aBhEFxIqRRrDjiFTYucZFP0oJJTbyceIJJyNq7mA3KH2sKcq2WWiq2Qg6fFTclHRs6oOqJ6+kQHSRGmokgxLDCI+YpkIiXYJOxt1zhTnti3TtRhbyu/vBFjsBqhsaHyvLhx1NbD9YjXbeezBVOFCae87dftTt/SpezfmSassM+xfm3KZrI0p8ciJwIeemYYfrh1Tv/da1AAWYrv/7f5/Jrn78Or9XIoNA06Ncd6+m7uLW5KtNAT9VKTwi5LpDey7o5/p2p9nIZqfI6Y4cWCU8KhCvsai4071xx6VSsI3fJlr"
-                                }
-                            ]
-                        },
-                        "provisionVMAgent": true
-                    },
-                    "secrets": [],
-                    "allowExtensionOperations": true
-                },
-                "networkProfile": {
-                    "networkInterfaces": [
-                        {
-                            "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_cka_lab_nic_worker_0_name'))]",
-                            "properties": {
-                                "primary": false
-                            }
-                        }
-                    ]
-                }
-            }
-        },
-        {
-            "type": "Microsoft.Compute/virtualMachines",
-            "apiVersion": "2019-03-01",
-            "name": "[parameters('virtualMachines_cka_lab_worker_1_name')]",
-            "location": "eastasia",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_cka_lab_nic_worker_1_name'))]"
-            ],
-            "properties": {
-                "hardwareProfile": {
-                    "vmSize": "Standard_B2s"
-                },
-                "storageProfile": {
-                    "imageReference": {
-                        "publisher": "Canonical",
-                        "offer": "UbuntuServer",
-                        "sku": "18.04-LTS",
-                        "version": "latest"
-                    },
-                    "osDisk": {
-                        "osType": "Linux",
-                        "name": "[concat(parameters('virtualMachines_cka_lab_worker_1_name'), '-osdisk')]",
-                        "createOption": "FromImage",
-                        "caching": "ReadWrite",
-                        "writeAcceleratorEnabled": false,
-                        "managedDisk": {
-                            "storageAccountType": "StandardSSD_LRS",
-                            "id": "[resourceId('Microsoft.Compute/disks', concat(parameters('virtualMachines_cka_lab_worker_1_name'), '-osdisk'))]"
-                        },
-                        "diskSizeGB": 30
-                    },
-                    "dataDisks": []
-                },
-                "osProfile": {
-                    "computerName": "[parameters('virtualMachines_cka_lab_worker_1_name')]",
-                    "adminUsername": "cka-admin",
-                    "linuxConfiguration": {
-                        "disablePasswordAuthentication": true,
-                        "ssh": {
-                            "publicKeys": [
-                                {
-                                    "path": "/home/cka-admin/.ssh/authorized_keys",
-                                    "keyData": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDParMZyG06jBVSbNp45+URur2RNznOEZBANWWJ2nH4aBhEFxIqRRrDjiFTYucZFP0oJJTbyceIJJyNq7mA3KH2sKcq2WWiq2Qg6fFTclHRs6oOqJ6+kQHSRGmokgxLDCI+YpkIiXYJOxt1zhTnti3TtRhbyu/vBFjsBqhsaHyvLhx1NbD9YjXbeezBVOFCae87dftTt/SpezfmSassM+xfm3KZrI0p8ciJwIeemYYfrh1Tv/da1AAWYrv/7f5/Jrn78Or9XIoNA06Ncd6+m7uLW5KtNAT9VKTwi5LpDey7o5/p2p9nIZqfI6Y4cWCU8KhCvsai4071xx6VSsI3fJlr"
-                                }
-                            ]
-                        },
-                        "provisionVMAgent": true
-                    },
-                    "secrets": [],
-                    "allowExtensionOperations": true
-                },
-                "networkProfile": {
-                    "networkInterfaces": [
-                        {
-                            "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaces_cka_lab_nic_worker_1_name'))]",
-                            "properties": {
-                                "primary": false
-                            }
-                        }
-                    ]
-                }
-            }
-        },
-        {
-            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+            "type": "Microsoft.Network/publicIPAddresses",
             "apiVersion": "2019-09-01",
-            "name": "[concat(parameters('networkSecurityGroups_cka_lab_sg_name'), '/HTTP')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_cka_lab_sg_name'))]"
-            ],
+            "copy": {
+                "name": "copyLoopControllerPip",
+                "count": "[parameters('controller_cluster_size')]"
+            },
+            "name": "[concat(parameters('namingPrefix'), '-controllerPip-', copyIndex())]",
+            "location": "[parameters('location')]",
+            "sku": {
+                "name": "Basic"
+            },
             "properties": {
-                "protocol": "Tcp",
-                "sourcePortRange": "*",
-                "destinationPortRange": "80",
-                "sourceAddressPrefix": "*",
-                "destinationAddressPrefix": "*",
-                "access": "Allow",
-                "priority": 100,
-                "direction": "Inbound",
-                "sourcePortRanges": [],
-                "destinationPortRanges": [],
-                "sourceAddressPrefixes": [],
-                "destinationAddressPrefixes": []
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Dynamic",
+                "idleTimeoutInMinutes": 4
             }
         },
         {
-            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+            "type": "Microsoft.Network/publicIPAddresses",
             "apiVersion": "2019-09-01",
-            "name": "[concat(parameters('networkSecurityGroups_cka_lab_sg_name'), '/SSH')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_cka_lab_sg_name'))]"
-            ],
+            "copy": {
+                "name": "copyLoopWorkerPip",
+                "count": "[parameters('worker_cluster_size')]"
+            },
+            "name": "[concat(parameters('namingPrefix'), '-workerPip-', copyIndex())]",
+            "location": "[parameters('location')]",
+            "sku": {
+                "name": "Basic"
+            },
             "properties": {
-                "protocol": "Tcp",
-                "sourcePortRange": "*",
-                "destinationPortRange": "22",
-                "sourceAddressPrefix": "*",
-                "destinationAddressPrefix": "*",
-                "access": "Allow",
-                "priority": 101,
-                "direction": "Inbound",
-                "sourcePortRanges": [],
-                "destinationPortRanges": [],
-                "sourceAddressPrefixes": [],
-                "destinationAddressPrefixes": []
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Dynamic",
+                "idleTimeoutInMinutes": 4
             }
         },
         {
             "type": "Microsoft.Network/virtualNetworks/subnets",
             "apiVersion": "2019-09-01",
-            "name": "[concat(parameters('virtualNetworks_vnet_name'), '/cka-lab-subnet')]",
+            "name": "[concat(parameters('namingPrefix'), '/cka-lab-subnet')]",
             "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworks_vnet_name'))]"
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('namingPrefix'))]"
             ],
             "properties": {
                 "addressPrefix": "10.0.10.0/24",
@@ -435,25 +236,28 @@
         {
             "type": "Microsoft.Network/networkInterfaces",
             "apiVersion": "2019-09-01",
-            "name": "[parameters('networkInterfaces_cka_lab_nic_master_0_name')]",
-            "location": "eastasia",
+            "copy": {
+                "count": "[parameters('controller_cluster_size')]",
+                "name": "copyLoop_controllerNics"
+            },
+            "name": "[concat(parameters('namingPrefix'), '-controllerNic-', copyIndex())]",
+            "location": "[parameters('location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicIPAddresses_cka_lab_master_pip_0_name'))]",
-                "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworks_vnet_name'), 'cka-lab-subnet')]",
-                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_cka_lab_sg_name'))]"
+                "[resourceId('Microsoft.Network/publicIPAddresses', concat(parameters('namingPrefix'), '-controllerPip-', copyIndex()))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('namingPrefix'), 'cka-lab-subnet')]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('nsg_main_sg_name'))]"
             ],
             "properties": {
                 "ipConfigurations": [
                     {
-                        "name": "cka-lab-ipconfig",
+                        "name": "[concat(parameters('namingPrefix'), '-ipcfg-', copyIndex())]",
                         "properties": {
-                            "privateIPAddress": "10.0.10.5",
                             "privateIPAllocationMethod": "Dynamic",
                             "publicIPAddress": {
-                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicIPAddresses_cka_lab_master_pip_0_name'))]"
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat(parameters('namingPrefix'), '-controllerPip-', copyIndex()))]"
                             },
                             "subnet": {
-                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworks_vnet_name'), 'cka-lab-subnet')]"
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('namingPrefix'), 'cka-lab-subnet')]"
                             },
                             "primary": true,
                             "privateIPAddressVersion": "IPv4"
@@ -466,32 +270,34 @@
                 "enableAcceleratedNetworking": false,
                 "enableIPForwarding": false,
                 "networkSecurityGroup": {
-                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_cka_lab_sg_name'))]"
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('nsg_main_sg_name'))]"
                 }
             }
         },
         {
             "type": "Microsoft.Network/networkInterfaces",
             "apiVersion": "2019-09-01",
-            "name": "[parameters('networkInterfaces_cka_lab_nic_worker_0_name')]",
-            "location": "eastasia",
+            "copy": {
+                "count": "[parameters('worker_cluster_size')]",
+                "name": "copyLoop_workerNics"
+            },
+            "name": "[concat(parameters('namingPrefix'), '-workerNic-', copyIndex())]",
+            "location": "[parameters('location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicIPAddresses_cka_lab_worker_pip_0_name'))]",
-                "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworks_vnet_name'), 'cka-lab-subnet')]",
-                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_cka_lab_sg_name'))]"
+                "[resourceId('Microsoft.Network/publicIPAddresses', concat(parameters('namingPrefix'), '-workerPip-', copyIndex()))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('namingPrefix'), 'cka-lab-subnet')]"
             ],
             "properties": {
                 "ipConfigurations": [
                     {
-                        "name": "cka-lab-ipconfig",
+                        "name": "[concat(parameters('namingPrefix'), '-ipcfg-', copyIndex())]",
                         "properties": {
-                            "privateIPAddress": "10.0.10.6",
                             "privateIPAllocationMethod": "Dynamic",
                             "publicIPAddress": {
-                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicIPAddresses_cka_lab_worker_pip_0_name'))]"
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', concat(parameters('namingPrefix'), '-workerPip-', copyIndex()))]"
                             },
                             "subnet": {
-                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworks_vnet_name'), 'cka-lab-subnet')]"
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('namingPrefix'), 'cka-lab-subnet')]"
                             },
                             "primary": true,
                             "privateIPAddressVersion": "IPv4"
@@ -504,45 +310,161 @@
                 "enableAcceleratedNetworking": false,
                 "enableIPForwarding": false,
                 "networkSecurityGroup": {
-                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_cka_lab_sg_name'))]"
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('nsg_main_sg_name'))]"
                 }
             }
         },
         {
-            "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "2019-09-01",
-            "name": "[parameters('networkInterfaces_cka_lab_nic_worker_1_name')]",
+            "name": "[parameters('vmss_cka_lab_controller_name')]",
+            "type": "Microsoft.Compute/virtualMachineScaleSets",
+            "apiVersion": "2019-07-01",
+            "location": "[parameters('location')]",
+            "properties": {
+                "singlePlacementGroup": "true",
+                "platformFaultDomainCount": "[parameters('vmssFaultDomains')]"
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', parameters('namingPrefix'))]"
+            ]
+        },
+        {
+            "name": "[parameters('vmss_cka_lab_worker_name')]",
+            "type": "Microsoft.Compute/virtualMachineScaleSets",
+            "apiVersion": "2019-07-01",
+            "location": "[parameters('location')]",
+            "properties": {
+                "singlePlacementGroup": "true",
+                "platformFaultDomainCount": "[parameters('vmssFaultDomains')]"
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', parameters('namingPrefix'))]"
+            ]
+        },
+       {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-03-01",
+            "name": "[concat(parameters('namingPrefix'),'-controller-',copyIndex())]",
             "location": "eastasia",
             "dependsOn": [
-                "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicIPAddresses_cka_lab_worker_pip_1_name'))]",
-                "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworks_vnet_name'), 'cka-lab-subnet')]",
-                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_cka_lab_sg_name'))]"
+                "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('namingPrefix'), '-workerNic-', copyIndex()))]",
+                "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('vmss_cka_lab_controller_name'))]"
             ],
+            "copy": {
+                "name": "copyLoopControllerVMs",
+                "count": "[parameters('controller_cluster_size')]"
+            },  
             "properties": {
-                "ipConfigurations": [
-                    {
-                        "name": "cka-lab-ipconfig",
-                        "properties": {
-                            "privateIPAddress": "10.0.10.4",
-                            "privateIPAllocationMethod": "Dynamic",
-                            "publicIPAddress": {
-                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('publicIPAddresses_cka_lab_worker_pip_1_name'))]"
-                            },
-                            "subnet": {
-                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworks_vnet_name'), 'cka-lab-subnet')]"
-                            },
-                            "primary": true,
-                            "privateIPAddressVersion": "IPv4"
-                        }
-                    }
-                ],
-                "dnsSettings": {
-                    "dnsServers": []
+                "virtualMachineScaleSet": {
+                    "id": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('vmss_cka_lab_controller_name'))]"
                 },
-                "enableAcceleratedNetworking": false,
-                "enableIPForwarding": false,
-                "networkSecurityGroup": {
-                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroups_cka_lab_sg_name'))]"
+                "hardwareProfile": {
+                    "vmSize": "[parameters('controllerInstanceType')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "[parameters('osName')]",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "osType": "Linux",
+                        "name": "[concat(parameters('namingPrefix'), '-controller-', copyIndex() ,'-osdisk')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite",
+                        "writeAcceleratorEnabled": false,
+                        "diskSizeGB": 30
+                    },
+                    "dataDisks": []
+                },
+                "osProfile": {
+                        "computerName": "[concat(parameters('namingPrefix'), '-controller-', copyIndex())]",
+                        "adminUsername": "[parameters('adminUsername')]",
+                        "linuxConfiguration": {
+                            "disablePasswordAuthentication": true,
+                            "ssh": {
+                                "publicKeys": [
+                                    {
+                                        "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                                        "keyData": "[parameters('adminPublicKey')]"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('namingPrefix'), '-controllerNic-', copyIndex()))]",
+                            "properties": {
+                                "primary": true
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-03-01",
+            "name": "[concat(parameters('namingPrefix'),'-worker-',copyIndex())]",
+            "location": "eastasia",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('namingPrefix'), '-workerNic-', copyIndex()))]",
+                "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('vmss_cka_lab_worker_name'))]"
+            ],
+            "copy": {
+                "name": "copyLoopWorkerVMs",
+                "count": "[parameters('worker_cluster_size')]"
+            },  
+            "properties": {
+                "virtualMachineScaleSet": {
+                    "id": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', parameters('vmss_cka_lab_worker_name'))]"
+                },
+                "hardwareProfile": {
+                    "vmSize": "[parameters('workerInstanceType')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "[parameters('osName')]",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "osType": "Linux",
+                        "name": "[concat(parameters('namingPrefix'), '-worker-', copyIndex() ,'-osdisk')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite",
+                        "writeAcceleratorEnabled": false,
+                        "diskSizeGB": 30
+                    },
+                    "dataDisks": []
+                },
+                "osProfile": {
+                        "computerName": "[concat(parameters('namingPrefix'), '-worker-', copyIndex())]",
+                        "adminUsername": "[parameters('adminUsername')]",
+                        "linuxConfiguration": {
+                            "disablePasswordAuthentication": true,
+                            "ssh": {
+                                "publicKeys": [
+                                    {
+                                        "path": "[concat('/home/', parameters('adminUsername'), '/.ssh/authorized_keys')]",
+                                        "keyData": "[parameters('adminPublicKey')]"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('namingPrefix'), '-workerNic-', copyIndex()))]",
+                            "properties": {
+                                "primary": true
+                            }
+                        }
+                    ]
                 }
             }
         }
